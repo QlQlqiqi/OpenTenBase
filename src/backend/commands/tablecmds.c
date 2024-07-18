@@ -1135,6 +1135,24 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 
         bound = transformPartitionBound(pstate, parent, stmt->partbound);
 
+#ifdef __OPENTENBASE__
+		/* transform child_tb_data to Datumtablename and insert into inhRelation->partbound */
+		if (stmt->is_child && list_length(stmt->child_tb_data) == 1)
+		{
+			Datumtablename *dt_tb = linitial(stmt->child_tb_data);
+			if (dt_tb->strategy == PARTITION_STRATEGY_RANGE)
+			{
+				AddNewPartBound(pstate, parent, stmt->child_tb_data, bound->lowerdatums);
+			}
+			else if (dt_tb->strategy == PARTITION_STRATEGY_LIST)
+			{
+				stmt->partbound =
+					AddNewPartBound(pstate, parent, stmt->child_tb_data, bound->listdatums);
+				bound = transformPartitionBound(pstate, parent, stmt->partbound);
+			}
+		}
+#endif
+
         /*
          * Check first that the new partition's bound is valid and does not
 		 * overlap with any of existing partitions of the parent.

@@ -321,6 +321,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd alter_group_cmd index_partition_cmd
+		 add_partition_cmd
 %type <list>	alter_table_cmds alter_type_cmds alter_group_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
@@ -1954,6 +1955,15 @@ AlterTableStmt:
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
+		|	ALTER TABLE relation_expr add_partition_cmd
+				{
+					AlterTableStmt *n = makeNode(AlterTableStmt);
+					n->relation = $3;
+					n->cmds = list_make1($4);
+					n->relkind = OBJECT_TABLE;
+					n->missing_ok = false;
+					$$ = (Node *)n;
+				}
 		|	ALTER TABLE IF_P EXISTS relation_expr partition_cmd
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
@@ -2147,6 +2157,41 @@ partition_cmd:
 					cmd->name = $3;
 					cmd->bound = NULL;
 					n->def = (Node *) cmd;
+
+					$$ = (Node *) n;
+				}
+		;
+
+add_partition_cmd:
+			/* ALTER TABLE <name> ADD PARTITION <table_name> VALUES LESS THAN */
+			ADD_P PARTITION ColId VALUES LESS THAN '(' range_datum_list ')'
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					Datumtablename *new_node = makeNode(Datumtablename);
+					new_node->strategy = PARTITION_STRATEGY_RANGE;
+					new_node->cmp_op = QULIFICATION_TYPE_LS;
+					new_node->tablename = $3;
+					new_node->data = $8;
+					new_node->location = @1;
+
+					n->subtype = AT_CreatePartition;
+					n->def = (Node *) new_node;
+
+					$$ = (Node *) n;
+				}
+			| ADD_P PARTITION ColId VALUES IN_P '(' partbound_datum_list ')'
+				{
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+
+					Datumtablename *new_node = makeNode(Datumtablename);
+					new_node->strategy = PARTITION_STRATEGY_LIST;
+					new_node->tablename = $3;
+					new_node->data = $7;
+					new_node->location = @1;
+
+					n->subtype = AT_CreatePartition;
+					n->def = (Node *) new_node;
 
 					$$ = (Node *) n;
 				}

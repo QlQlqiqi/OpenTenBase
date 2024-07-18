@@ -1902,6 +1902,7 @@ typedef enum AlterTableType
     AT_DeleteNodeList,            /* DELETE NODE nodelist */
 #endif
 #ifdef __OPENTENBASE__
+	AT_CreatePartition,			/* create and add partition */
     AT_AddPartitions,
     AT_DropPartitions,
     AT_ExchangeIndexName,

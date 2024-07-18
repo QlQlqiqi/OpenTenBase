@@ -298,50 +298,57 @@ transformCreateStmt(CreateStmt *stmt, const char *queryString)
 	/* rule check in oracle's partition caluse */
 	if(stmt->child_tb_data)
 	{
-		/* at lease one clause */
-		if (list_length(stmt->child_tb_data) < 1)
+		if (!stmt->is_child)
 		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("clause should be non-empty in partition by clause")));
-		}
-
-		/* must include partition by clause */
-		if (stmt->partspec == NULL || stmt->partspec->partParams == NULL)
-		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("cannot use oracle's partition caluse without partition by")));
-		}
-
-		/* only support one column in partition by clause */
-		if (list_length(stmt->partspec->partParams) != 1)
-		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("partition params must be one")));
-		}
-
-		/*
-		 * only support partition range/list.
-		 * the strategy in partition by clause should be the same as others in this clause,
-		 * and it also should be the same as in Datumtablename's.
-		 */
-		char strategy = ((Datumtablename *)linitial(stmt->child_tb_data))->strategy;
-		foreach (elements, stmt->child_tb_data)
-		{
-			Datumtablename *tb_data = lfirst(elements);
-			if (strategy != tb_data->strategy)
+			/* at lease one clause */
+			if (list_length(stmt->child_tb_data) < 1)
 			{
 				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-								errmsg("the strategy in partition by clause should be the same as "
-									   "others in this clause")));
+								errmsg("clause should be non-empty in partition by clause")));
 			}
-		}
-		if (!(strcmp(stmt->partspec->strategy, "range") == 0 &&
-				  strategy == PARTITION_STRATEGY_RANGE ||
-			  strcmp(stmt->partspec->strategy, "list") == 0 && strategy == PARTITION_STRATEGY_LIST))
-		{
-			ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-							errmsg("the strategy in partition by clause should be the same as in "
-								   "Datumtablename's")));
+
+			/* must include partition by clause */
+			if (stmt->partspec == NULL || stmt->partspec->partParams == NULL)
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("cannot use oracle's partition caluse without partition by")));
+			}
+
+			/* only support one column in partition by clause */
+			if (list_length(stmt->partspec->partParams) != 1)
+			{
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("partition params must be one")));
+			}
+
+			/*
+			 * only support partition range/list.
+			 * the strategy in partition by clause should be the same as others in this clause,
+			 * and it also should be the same as in Datumtablename's.
+			 */
+			char strategy = ((Datumtablename *)linitial(stmt->child_tb_data))->strategy;
+			foreach (elements, stmt->child_tb_data)
+			{
+				Datumtablename *tb_data = lfirst(elements);
+				if (strategy != tb_data->strategy)
+				{
+					ereport(ERROR,
+							(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+							 errmsg("the strategy in partition by clause should be the same as "
+									"others in this clause")));
+				}
+			}
+			if (!(strcmp(stmt->partspec->strategy, "range") == 0 &&
+					  strategy == PARTITION_STRATEGY_RANGE ||
+				  strcmp(stmt->partspec->strategy, "list") == 0 &&
+					  strategy == PARTITION_STRATEGY_LIST))
+			{
+				ereport(ERROR,
+						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+						 errmsg("the strategy in partition by clause should be the same as in "
+								"Datumtablename's")));
+			}
 		}
 	}
 #endif

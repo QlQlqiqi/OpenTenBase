@@ -4138,6 +4138,60 @@ ProcessUtilitySlow(ParseState *pstate,
                     ListCell   *l;
                     LOCKMODE    lockmode;
 
+#ifdef __OPENTENBASE__
+					/* ALTER TABLE <name> ADD PARTITION <name> values */
+					if (list_length(atstmt->cmds) == 1)
+					{
+						Node *node = linitial(atstmt->cmds);
+						if (node->type == T_AlterTableCmd)
+						{
+							AlterTableCmd *cmd = (AlterTableCmd *)node;
+							if (cmd->subtype == AT_CreatePartition)
+							{
+								/* construct a child partition createStmt */
+								CreateStmt *createStmt = makeNode(CreateStmt);
+								Datumtablename *dt_tb = (Datumtablename *)cmd->def;
+								RangeVar *relation = makeNode(RangeVar);
+								relation->inh = true;
+								relation->relname = pstrdup(dt_tb->tablename);
+								relation->location = dt_tb->location;
+								relation->relpersistence = RELPERSISTENCE_PERMANENT;
+								createStmt->relation = relation;
+								createStmt->inhRelations = list_make1(copyObject(atstmt->relation));
+
+								/* transform Datumtablename to partbound in DefineRelation */
+								PartitionBoundSpec *partbound = makeNode(PartitionBoundSpec);
+								partbound->strategy = dt_tb->strategy;
+								partbound->location = dt_tb->location;
+								if (dt_tb->strategy == PARTITION_STRATEGY_RANGE)
+								{
+									partbound->upperdatums = copyObject(dt_tb->data);
+									partbound->lowerdatums = copyObject(dt_tb->data);
+								}
+								else if (dt_tb->strategy == PARTITION_STRATEGY_LIST)
+								{
+									partbound->listdatums = copyObject(dt_tb->data);
+								}
+								createStmt->partbound = partbound;
+
+								createStmt->child_tb_data = list_make1(dt_tb);
+								createStmt->is_child = true;
+
+								/* check range overlap */
+								// Relation parent_rel = heap_openrv(atstmt->relation,
+								// AccessShareLock); check_new_partition_bound();
+								// heap_close(parent_rel, AccessShareLock);
+
+								/* do createStmt now */
+								PlannedStmt *tmp_pstmt = copyObject(pstmt);
+								tmp_pstmt->utilityStmt = createStmt;
+								ProcessUtilitySlow(pstate, tmp_pstmt, queryString, context, params,
+												   queryEnv, dest, sentToRemote, completionTag);
+								break;
+							}
+						}
+					}
+#endif
                     /*
                      * Figure out lock mode, and acquire lock.  This also does
                      * basic permissions checks, so that we won't wait for a
