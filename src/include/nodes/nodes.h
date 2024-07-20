@@ -405,6 +405,9 @@ typedef enum NodeTag
     T_AlterFunctionStmt,
     T_DoStmt,
     T_RenameStmt,
+#ifdef __OPENTENBASE__
+	T_ExchangeTableCmd,
+#endif
     T_RuleStmt,
     T_NotifyStmt,
     T_ListenStmt,

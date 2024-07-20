@@ -18047,3 +18047,217 @@ static bool mls_policy_check(Node * stmt, Oid relid)
 #endif
 
 
+
+#ifdef __OPENTENBASE__
+/*
+ * make three number of RenameStmt for exchanging tables:
+ * 1. rename child_rel to tmp.
+ * 1. rename ex to child_rel.
+ * 1. rename tmp to ex.
+ *
+ * note: the both relations must be fit some conditions defined in CheckExchangeCmd
+*/
+List*
+MakeRenameStmtFromExchangeCmd(RenameStmt *rename_stmt, List *rels){
+	ExchangeTableCmd *exchange_cmd = rename_stmt->ex_cmd;
+	ObjectType renameType = rename_stmt->renameType;
+	bool missing_ok = rename_stmt->missing_ok;
+
+	// check conditions
+	CheckExchangeCmd(exchange_cmd, rels);
+
+	char tmp[23]; /* sign, 21 digits and '\0' */
+	memset(tmp, 0, sizeof(tmp) * sizeof(char));
+	TimestampTz current_time = GetCurrentTimestamp();
+	pg_lltoa(current_time, tmp);
+
+	List *stmts = NIL;
+	// child_rel -> tmp
+	RenameStmt *stmt1 = makeNode(RenameStmt);
+	stmt1->renameType = renameType;
+	stmt1->relation = copyObject(exchange_cmd->child_rel);
+	stmt1->subname = NULL;
+	stmt1->newname = pstrdup(tmp);
+	stmt1->missing_ok = missing_ok;
+	stmts = lappend(stmts, stmt1);
+
+	// ex_rel -> child_rel
+	RenameStmt *stmt2 = makeNode(RenameStmt);
+	stmt2->renameType = renameType;
+	stmt2->relation = copyObject(exchange_cmd->ex_rel);
+	stmt2->subname = NULL;
+	stmt2->newname = pstrdup(exchange_cmd->child_rel->relname);
+	stmt2->missing_ok = missing_ok;
+	stmts = lappend(stmts, stmt2);
+
+	// tmp -> ex_rel
+	RenameStmt *stmt3 = makeNode(RenameStmt);
+	stmt3->renameType = renameType;
+	stmt3->relation = copyObject(exchange_cmd->child_rel);
+	stmt3->relation->relname = pstrdup(tmp);
+	stmt3->subname = NULL;
+	stmt3->newname = pstrdup(exchange_cmd->ex_rel->relname);
+	stmt3->missing_ok = missing_ok;
+	stmts = lappend(stmts, stmt3);
+
+	return stmts;
+}
+
+/* check whether the exchange stmt is valid */
+void
+CheckExchangeCmd(ExchangeTableCmd *exchange_cmd, List *rels)
+{
+	Relation parent_rel = heap_openrv(exchange_cmd->parent_rel, NoLock);
+	Relation child_rel = heap_openrv(exchange_cmd->child_rel, NoLock);
+	Relation ex_rel = heap_openrv(exchange_cmd->ex_rel, NoLock);
+
+	CheckRelationship(parent_rel, child_rel, ex_rel, rels);
+
+	// same table structure
+	if (!IsSameTableStructure(child_rel, ex_rel))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
+				 errmsg("the table structure of relation %s must be same as %s's",
+						RelationGetRelationName(child_rel), RelationGetRelationName(ex_rel))));
+	}
+
+	heap_close(parent_rel, NoLock);
+	heap_close(child_rel, NoLock);
+	heap_close(ex_rel, NoLock);
+}
+
+/*
+ * 1. child_rel must be partition of parent_rel and not be partition of ex_rel.
+ * 2. ex_rel must be not partition of parent_rel nad child_rel.
+ * 3. parent_rel must be not partition of ex_rel nad child_rel.
+ * 4. ex_rel must be non-partition table.
+*/
+void
+CheckRelationship(Relation parent_rel, Relation child_rel, Relation ex_rel, List *rels)
+{
+	// 1. child_rel must be partition of parent_rel and not be partition of ex_rel.
+	if (!IsPartitionChild(child_rel, parent_rel, rels) || IsPartitionChild(child_rel, ex_rel, rels))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
+				 errmsg("%s must be partition of %s and not be partition of %s.",
+						RelationGetRelationName(child_rel), RelationGetRelationName(parent_rel),
+						RelationGetRelationName(ex_rel))));
+	}
+
+	// 2. ex_rel must be not partition of parent_rel nad child_rel.
+	if (IsPartitionChild(ex_rel, parent_rel, rels) || IsPartitionChild(ex_rel, child_rel, rels))
+	{
+		ereport(ERROR,
+				(errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
+				 errmsg("%s must be not partition of %s nad %s.", RelationGetRelationName(ex_rel),
+						RelationGetRelationName(parent_rel), RelationGetRelationName(child_rel))));
+	}
+
+	// 3. parent_rel must be not partition of ex_rel nad child_rel.
+	if (IsPartitionChild(parent_rel, ex_rel, rels) || IsPartitionChild(parent_rel, child_rel, rels))
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
+						errmsg("%s must be not partition of %s nad %s.",
+							   RelationGetRelationName(parent_rel), RelationGetRelationName(ex_rel),
+							   RelationGetRelationName(child_rel))));
+	}
+
+	// 4. ex_rel must be non-partition table.
+	if (RelationGetPartitionKey(ex_rel))
+	{
+		ereport(ERROR, (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
+						errmsg("the relation %s can not be partition table",
+							   RelationGetRelationName(ex_rel))));
+	}
+}
+
+/*
+ * check whether child_rel is chlid partition of parent_rel, and traverse
+ * its child/grandchild relation and lock it with AccessExclusiveLock.
+ *
+ * rels store all relations traversed from parent_rel to child_rel,
+ * except for the both.
+*/
+bool
+IsPartitionChild(Relation child_rel, Relation parent_rel, List *rels)
+{
+	struct PartitionDescData *partdesc = RelationGetPartitionDesc(parent_rel);
+	int nparts = partdesc ? partdesc->nparts : 0;
+
+	// traverse parent table and check whether child_rel is partiton of parent_rel
+	for (int i = 0; i < nparts; i++)
+	{
+		Oid c_oid = partdesc->oids[i];
+		Relation c_rel = heap_open(c_oid, AccessExclusiveLock);
+		if (RelationGetRelid(c_rel) == RelationGetRelid(child_rel))
+		{
+			// close, because c_rel(child_rel) has been lock in AccessExclusiveLock mode
+			heap_close(c_rel, AccessExclusiveLock);
+			return true;
+		}
+		if (rels)
+		{
+			lappend(rels, c_rel);
+		}
+		// traverse child's child
+		if (IsPartitionChild(child_rel, c_rel, rels))
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/*
+ * check whether the table structure is same as and the both is ordinary table
+ *
+ * note: this function do *NOT* check constraints
+*/
+bool
+IsSameTableStructure(Relation rel1, Relation rel2)
+{
+	// same
+	TupleDesc desc1 = RelationGetDescr(rel1);
+	TupleDesc desc2 = RelationGetDescr(rel2);
+	if (desc1->natts != desc2->natts)
+	{
+		return false;
+	}
+
+	int natts = desc1->natts;
+	for (int i = 0; i < natts; i++)
+	{
+		FormData_pg_attribute *attr1 = TupleDescAttr(desc1, i);
+		FormData_pg_attribute *attr2 = NULL;
+		bool found = false;
+		for (int j = 0; j < natts; j++)
+		{
+			attr2 = TupleDescAttr(desc2, j);
+			// check column name
+			if (strcmp(NameStr(attr1->attname), NameStr(attr2->attname)) == 0)
+			{
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+		{
+			return false;
+		}
+		// check column type
+		if (attr1->atttypid != attr2->atttypid)
+		{
+			return false;
+		}
+		// check column length
+		if (attr1->attlen != attr2->attlen || attr1->atttypmod != attr2->atttypmod)
+		{
+			return false;
+		}
+	}
+	return true;
+}
+#endif

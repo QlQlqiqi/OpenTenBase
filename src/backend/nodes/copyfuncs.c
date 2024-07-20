@@ -3863,9 +3863,26 @@ _copyRenameStmt(const RenameStmt *from)
     COPY_STRING_FIELD(newname);
     COPY_SCALAR_FIELD(behavior);
     COPY_SCALAR_FIELD(missing_ok);
+#ifdef __OPENTENBASE__
+	COPY_NODE_FIELD(ex_cmd);
+#endif
 
     return newnode;
 }
+
+#ifdef __OPENTENBASE__
+static ExchangeTableCmd *
+_copyExchangeTableCmd(const ExchangeTableCmd *from)
+{
+	ExchangeTableCmd *newnode = makeNode(ExchangeTableCmd);
+
+	COPY_NODE_FIELD(parent_rel);
+	COPY_NODE_FIELD(child_rel);
+	COPY_NODE_FIELD(ex_rel);
+
+	return newnode;
+}
+#endif
 
 static AlterObjectDependsStmt *
 _copyAlterObjectDependsStmt(const AlterObjectDependsStmt *from)
@@ -5891,6 +5908,11 @@ copyObjectImpl(const void *from)
         case T_RenameStmt:
             retval = _copyRenameStmt(from);
             break;
+#ifdef __OPENTENBASE__
+		case T_ExchangeTableCmd:
+			retval = _copyExchangeTableCmd(from);
+			break;
+#endif
         case T_AlterObjectDependsStmt:
             retval = _copyAlterObjectDependsStmt(from);
             break;

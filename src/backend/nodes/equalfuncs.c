@@ -1446,9 +1446,24 @@ _equalRenameStmt(const RenameStmt *a, const RenameStmt *b)
     COMPARE_STRING_FIELD(newname);
     COMPARE_SCALAR_FIELD(behavior);
     COMPARE_SCALAR_FIELD(missing_ok);
+#ifdef __OPENTENBASE__
+	COMPARE_NODE_FIELD(ex_cmd);
+#endif
 
     return true;
 }
+
+#ifdef __OPENTENBASE__
+static bool
+_equalExchangeTableCmd(const ExchangeTableCmd *a, const ExchangeTableCmd *b)
+{
+	COMPARE_NODE_FIELD(parent_rel);
+	COMPARE_NODE_FIELD(child_rel);
+	COMPARE_NODE_FIELD(ex_rel);
+
+	return true;
+}
+#endif
 
 static bool
 _equalAlterObjectDependsStmt(const AlterObjectDependsStmt *a, const AlterObjectDependsStmt *b)
@@ -3549,6 +3564,11 @@ equal(const void *a, const void *b)
         case T_RenameStmt:
             retval = _equalRenameStmt(a, b);
             break;
+#ifdef __OPENTENBASE__
+		case T_ExchangeTableCmd:
+			retval = _equalExchangeTableCmd(a, b);
+			break;
+#endif
         case T_AlterObjectDependsStmt:
             retval = _equalAlterObjectDependsStmt(a, b);
             break;

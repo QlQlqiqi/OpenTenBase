@@ -9063,6 +9063,22 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
+			/* ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table */
+			| ALTER TABLE relation_expr EXCHANGE PARTITION relation_expr WITH TABLE relation_expr
+				{
+					RenameStmt *n = makeNode(RenameStmt);
+					n->renameType = OBJECT_TABLE;
+					n->missing_ok = false;
+
+					ExchangeTableCmd *cmd = makeNode(ExchangeTableCmd);
+					cmd->parent_rel = $3;
+					cmd->child_rel = $6;
+					cmd->ex_rel = $9;
+
+					n->ex_cmd = cmd;
+
+					$$ = (Node *)n;
+				}
 			| ALTER TABLE IF_P EXISTS relation_expr RENAME TO name
 				{
 					RenameStmt *n = makeNode(RenameStmt);

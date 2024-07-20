@@ -4174,6 +4174,18 @@ _readDatumtablename(void)
 
 	READ_DONE();
 }
+
+static ExchangeTableCmd *
+_readExchangeTableCmd(void)
+{
+	READ_LOCALS(ExchangeTableCmd);
+
+	READ_NODE_FIELD(parent_rel);
+	READ_NODE_FIELD(child_rel);
+	READ_NODE_FIELD(ex_rel);
+
+	READ_DONE();
+}
 #endif
 
 #ifdef __AUDIT__
@@ -4547,6 +4559,8 @@ parseNodeString(void)
 #ifdef __OPENTENBASE__
 	else if (MATCH("DATUMTABLENAME", 14))
 		return_value = _readDatumtablename();
+	else if (MATCH("EXCHANGETABLECMD", 16))
+		return_value = _readExchangeTableCmd();
     else if (MATCH("PARTITIONBY", 11))
         return_value = _readPartitionBy();
     else if (MATCH("ADDDROPPARTITIONS", 17))

@@ -3004,6 +3004,21 @@ typedef struct InlineCodeBlock
     bool        langIsTrusted;    /* trusted property of the language */
 } InlineCodeBlock;
 
+#ifdef __OPENTENBASE__
+/* ----------------------
+ * ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table
+ * ----------------------
+ */
+typedef struct ExchangeTableCmd
+{
+	NodeTag type;
+
+	RangeVar *parent_rel; /* parent_table */
+	RangeVar *child_rel;  /* child_table */
+	RangeVar *ex_rel;	  /* ordinary_table */
+} ExchangeTableCmd;
+#endif
+
 /* ----------------------
  *        Alter Object Rename Statement
  * ----------------------
@@ -3023,6 +3038,9 @@ typedef struct RenameStmt
     char       *newname;        /* the new name */
     DropBehavior behavior;        /* RESTRICT or CASCADE behavior */
     bool        missing_ok;        /* skip error if missing? */
+#ifdef __OPENTENBASE__
+	ExchangeTableCmd *ex_cmd;	   /* for alter table partition exchange clause */
+#endif
 } RenameStmt;
 
 /* ----------------------

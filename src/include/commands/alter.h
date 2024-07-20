@@ -21,6 +21,10 @@
 
 extern ObjectAddress ExecRenameStmt(RenameStmt *stmt);
 
+#ifdef __OPENTENBASE__
+extern void ExecExchangeCmd(RenameStmt *stmt);
+#endif
+
 extern ObjectAddress ExecAlterObjectDependsStmt(AlterObjectDependsStmt *stmt,
                            ObjectAddress *refAddress);
 extern ObjectAddress ExecAlterObjectSchemaStmt(AlterObjectSchemaStmt *stmt,

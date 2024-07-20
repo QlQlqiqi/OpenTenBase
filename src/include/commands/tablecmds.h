@@ -130,3 +130,11 @@ extern void ExecCheckOverLapStmt(CheckOverLapStmt *stmt);
 #endif
 
 #endif							/* TABLECMDS_H */
+
+#ifdef __OPENTENBASE__
+extern List *MakeRenameStmtFromExchangeCmd(RenameStmt *rename_stmt, List *rels);
+extern void CheckExchangeCmd(ExchangeTableCmd *exchange_cmd, List *rels);
+void CheckRelationship(Relation parent_rel, Relation child_rel, Relation ex_rel, List *rels);
+extern bool IsPartitionChild(Relation child_rel, Relation parent_rel, List *rels);
+extern bool IsSameTableStructure(Relation rel1, Relation rel2);
+#endif

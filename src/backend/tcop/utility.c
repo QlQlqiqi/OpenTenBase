@@ -126,6 +126,7 @@
 
 #ifdef __OPENTENBASE__
 extern int DropSequenceGTM(char *name, GTM_SequenceKeyType type);
+static RemoteQueryExecType GetExchangeTableExecType(ExchangeTableCmd *cmd, bool *is_temp);
 #endif
 
 static void ExecUtilityStmtOnNodes(Node* parsetree, const char *queryString, ExecNodes *nodes,
@@ -5455,10 +5456,49 @@ void CheckAndSendLeaderCNReindex(bool sentToRemote, ReindexStmt *stmt,
 	}
 }
 
+/* the logic is like GetRenameExecType */
+static RemoteQueryExecType GetExchangeTableExecType(ExchangeTableCmd *cmd, bool *is_temp)
+{
+	RemoteQueryExecType exec_type1 = EXEC_ON_NONE;
+	RemoteQueryExecType exec_type2 = EXEC_ON_NONE;
+
+	if (cmd->child_rel)
+	{
+		Oid relid = RangeVarGetRelid(cmd->child_rel, NoLock, true);
+		if (OidIsValid(relid))
+			exec_type1 = ExecUtilityFindNodes(OBJECT_TABLE, relid, is_temp);
+		else
+			exec_type1 = EXEC_ON_NONE;
+	}
+	else
+		exec_type1 = ExecUtilityFindNodes(OBJECT_TABLE, InvalidOid, is_temp);
+
+	if (cmd->ex_rel)
+	{
+		Oid relid = RangeVarGetRelid(cmd->ex_rel, NoLock, true);
+		if (OidIsValid(relid))
+			exec_type2 = ExecUtilityFindNodes(OBJECT_TABLE, relid, is_temp);
+		else
+			exec_type2 = EXEC_ON_NONE;
+	}
+	else
+		exec_type2 = ExecUtilityFindNodes(OBJECT_TABLE, InvalidOid, is_temp);
+	if (exec_type1 != exec_type2)
+	{
+		return EXEC_ON_NONE;
+	}
+	return exec_type1;
+}
 #endif
 
 static RemoteQueryExecType GetRenameExecType(RenameStmt *stmt, bool *is_temp)
 {
+#ifdef __OPENTENBASE__
+	if (stmt->ex_cmd)
+	{
+		return GetExchangeTableExecType(stmt->ex_cmd, is_temp);
+	}
+#endif
 	RemoteQueryExecType	exec_type = EXEC_ON_NONE;
 	/*
 	 * Get the necessary details about the relation before we
