@@ -864,24 +864,18 @@ partition_bounds_copy(PartitionBoundInfo src,
 
 #ifdef __OPENTENBASE__
 /*
- * transform Datumtablename to PartitionBoundSpec whose lower bound is the one
- * which is the greater one which is less than dt_tb, for range strategy.  If
+ * transform SubPartitionCmd to PartitionBoundSpec whose lower bound is the one
+ * which is the greater one which is less than subpartcmd, for range strategy.  If
  * there is overlapping range, report it as error.
  *
  * return partbound, if list strategy, NULL else.
  *
- * note: this function will only change formed_datums and *DO NOT* change dt_tb
+ * note: this function will only change formed_datums and *DO NOT* change subpartcmd
  * in list strategy.
 */
 PartitionBoundSpec *
-AddNewPartBound(ParseState *pstate, Relation inh, List *dt_tbs, List *formed_datums)
+AddNewPartBound(ParseState *pstate, Relation inh, SubPartitionCmd *subpartcmd, List *formed_datums)
 {
-	if (list_length(dt_tbs) != 1)
-	{
-		return NULL;
-	}
-	Datumtablename *dt_tb = linitial(dt_tbs);
-
 	PartitionRangeDatum *prd = linitial(formed_datums);
 	PartitionKey key = RelationGetPartitionKey(inh);
 	PartitionDesc partdesc = RelationGetPartitionDesc(inh);
@@ -897,25 +891,24 @@ AddNewPartBound(ParseState *pstate, Relation inh, List *dt_tbs, List *formed_dat
 		partbound = makeNode(PartitionBoundSpec);
 		partbound->is_default = false;
 		partbound->strategy = PARTITION_STRATEGY_LIST;
-		partbound->location = dt_tb->location;
-		partbound->listdatums = copyObject(dt_tb->data);
+		partbound->listdatums = copyObject(subpartcmd->data);
 	}
 	break;
 	case PARTITION_STRATEGY_RANGE:
 	{
-		if (list_length(dt_tb->data) != list_length(formed_datums))
+		if (list_length(subpartcmd->data) != list_length(formed_datums))
 		{
 			ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 							errmsg("length of range value must be the same as exist's")));
 		}
 
-		if (list_length(dt_tb->data) != 1)
+		if (list_length(subpartcmd->data) != 1)
 		{
 			ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
 							errmsg("length of range value must be one")));
 		}
 
-		switch (dt_tb->cmp_op)
+		switch (subpartcmd->cmp_op)
 		{
 		case QULIFICATION_TYPE_LS:
 		{
@@ -948,7 +941,7 @@ AddNewPartBound(ParseState *pstate, Relation inh, List *dt_tbs, List *formed_dat
 		break;
 		default:
 		{
-			elog(ERROR, "unsupported compare type: %d", dt_tb->cmp_op);
+			elog(ERROR, "unsupported compare type: %d", subpartcmd->cmp_op);
 		}
 		}
 	}

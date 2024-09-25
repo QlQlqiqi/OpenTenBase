@@ -29,7 +29,8 @@ extern bool loose_unique_index;
 extern List *transformCreateStmt(CreateStmt *stmt, const char *queryString,
 					bool autodistribute, Oid *nspaceid, bool existsok);
 List *transformChildPartBounds(CreateStmt *parent_stmt);
-void transformDatumtablename2PartBound(List *child_stmts, List *child_tb_data);
+void transformSubPartitionSpec2PartBound(List *child_stmts, SubPartitionSpec *subpartspec);
+CreateStmt *transformPartitionCmd2CreateStmt(PartitionCmd *partcmd, AlterTableStmt *atstmt);
 #elif XCP
 extern List *transformCreateStmt(CreateStmt *stmt, const char *queryString,
                     bool autodistribute);

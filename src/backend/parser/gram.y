@@ -260,8 +260,9 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 /* PGXC_END */
 	A_Const				*a_const;
 	PartitionElem		*partelem;
-	Datumtablename	*datumtbname;
 	PartitionSpec		*partspec;
+	SubPartitionSpec	*subpartspec;
+	SubPartitionCmd		*subpartcmd;
 	PartitionBoundSpec	*partboundspec;
 	RoleSpec			*rolespec;
 	PartitionForExpr	*partfor;
@@ -321,7 +322,6 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 
 %type <node>	alter_table_cmd alter_type_cmd opt_collate_clause
 	   replica_identity partition_cmd alter_group_cmd index_partition_cmd
-		 add_partition_cmd
 %type <list>	alter_table_cmds alter_type_cmds alter_group_cmds
 %type <list>    alter_identity_column_option_list
 %type <defelt>  alter_identity_column_option
@@ -620,10 +620,11 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <boolean> opt_if_not_exists
 %type <ival>	generated_when override_kind
 %type <partspec>	PartitionSpec OptPartitionSpec
+%type <subpartspec>	SubPartitionSpec OptSubPartitionSpec
 %type <str>			part_strategy
 %type <partelem>	part_elem
-%type <datumtbname> tb_data_elem
-%type <list>		part_params tb_data_list
+%type <subpartcmd>	non_interval_expr
+%type <list>		part_params non_interval_exprs
 %type <partboundspec> PartitionBoundSpec
 %type <node>		partbound_datum PartitionRangeDatum
 %type <list>       hash_partbound partbound_datum_list range_datum_list
@@ -1955,15 +1956,6 @@ AlterTableStmt:
 					n->missing_ok = false;
 					$$ = (Node *)n;
 				}
-		|	ALTER TABLE relation_expr add_partition_cmd
-				{
-					AlterTableStmt *n = makeNode(AlterTableStmt);
-					n->relation = $3;
-					n->cmds = list_make1($4);
-					n->relkind = OBJECT_TABLE;
-					n->missing_ok = false;
-					$$ = (Node *)n;
-				}
 		|	ALTER TABLE IF_P EXISTS relation_expr partition_cmd
 				{
 					AlterTableStmt *n = makeNode(AlterTableStmt);
@@ -2160,38 +2152,43 @@ partition_cmd:
 
 					$$ = (Node *) n;
 				}
-		;
-
-add_partition_cmd:
-			/* ALTER TABLE <name> ADD PARTITION <table_name> VALUES LESS THAN */
-			ADD_P PARTITION ColId VALUES LESS THAN '(' range_datum_list ')'
+			| /* ALTER TABLE <name> ADD PARTITION <table_name> VALUES LESS THAN */
+			ADD_P PARTITION qualified_name VALUES LESS THAN '(' range_datum_list ')'
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+					PartitionCmd *cmd = makeNode(PartitionCmd);
+					PartitionBoundSpec *bound = makeNode(PartitionBoundSpec);
 
-					Datumtablename *new_node = makeNode(Datumtablename);
-					new_node->strategy = PARTITION_STRATEGY_RANGE;
-					new_node->cmp_op = QULIFICATION_TYPE_LS;
-					new_node->tablename = $3;
-					new_node->data = $8;
-					new_node->location = @1;
+					bound->strategy = PARTITION_STRATEGY_RANGE;
+					bound->is_default = false;
+					bound->lowerdatums = $8;
+					bound->upperdatums = $8;
+					bound->location = @3;
+
+					cmd->name = $3;
+					cmd->bound = bound;
 
 					n->subtype = AT_CreatePartition;
-					n->def = (Node *) new_node;
+					n->def = (Node *) cmd;
 
 					$$ = (Node *) n;
 				}
-			| ADD_P PARTITION ColId VALUES IN_P '(' partbound_datum_list ')'
+			| ADD_P PARTITION qualified_name VALUES IN_P '(' partbound_datum_list ')'
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
+					PartitionCmd *cmd = makeNode(PartitionCmd);
+					PartitionBoundSpec *bound = makeNode(PartitionBoundSpec);
 
-					Datumtablename *new_node = makeNode(Datumtablename);
-					new_node->strategy = PARTITION_STRATEGY_LIST;
-					new_node->tablename = $3;
-					new_node->data = $7;
-					new_node->location = @1;
+					bound->strategy = PARTITION_STRATEGY_LIST;
+					bound->is_default = false;
+					bound->listdatums = $7;
+					bound->location = @3;
+
+					cmd->name = $3;
+					cmd->bound = bound;
 
 					n->subtype = AT_CreatePartition;
-					n->def = (Node *) new_node;
+					n->def = (Node *) cmd;
 
 					$$ = (Node *) n;
 				}
@@ -2911,35 +2908,6 @@ alter_identity_column_option:
 				}
 		;
 
-tb_data_list:
-			tb_data_elem										{ $$ = list_make1($1); }
-			|	tb_data_list ',' tb_data_elem		{ $$ = lappend($1, $3); }
-		;
-
-tb_data_elem:
-			PARTITION ColId VALUES LESS THAN '(' range_datum_list ')'
-				{
-					Datumtablename *n = makeNode(Datumtablename);
-					n->strategy = PARTITION_STRATEGY_RANGE;
-					n->cmp_op = QULIFICATION_TYPE_LS;
-					n->tablename = $2;
-					n->data = $7;
-					n->location = @1;
-
-					$$ = n;
-				}
-			| PARTITION ColId VALUES '(' partbound_datum_list ')'
-				{
-					Datumtablename *n = makeNode(Datumtablename);
-					n->strategy = PARTITION_STRATEGY_LIST;
-					n->tablename = $2;
-					n->data = $5;
-					n->location = @1;
-
-					$$ = n;
-				}
-		;
-
 PartitionBoundSpec:
 			/* a HASH partition*/
 			FOR VALUES WITH '(' hash_partbound ')'
@@ -3647,38 +3615,6 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->if_not_exists = true;
 					$$ = (Node *)n;
 				}
-		| CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
-			OptInherit OptPartitionSpec '(' tb_data_list ')' OptWith OnCommitOption
-			OptTableSpace
-/* PGXC_BEGIN */
-			OptDistributeBy
-/* PGXC_END */
-				{
-					CreateStmt *n = makeNode(CreateStmt);
-					$4->relpersistence = $2;
-					n->relation = $4;
-					n->tableElts = $6;
-					n->inhRelations = $8;
-					n->partspec = $9;
-					n->ofTypename = NULL;
-					n->constraints = NIL;
-					n->options = $13;
-					n->oncommit = $14;
-					n->tablespacename = $15;
-					n->if_not_exists = false;
-/* PGXC_BEGIN */
-					if ($2 == RELPERSISTENCE_LOCAL_TEMP)
-					{
-						$4->relpersistence = RELPERSISTENCE_TEMP;
-						n->islocal = true;
-					}
-					n->relkind = RELKIND_RELATION;
-					n->distributeby = $16;
-					n->subcluster = NULL;
-					n->child_tb_data = $11;
-/* PGXC_END */
-					$$ = (Node *)n;
-				}
 		;
 
 /*
@@ -4271,8 +4207,69 @@ PartitionSpec: PARTITION BY part_strategy '(' part_params ')' interval_expr
 
 					$$ = n;
 				}
+		| PARTITION BY part_strategy '(' part_params ')' OptSubPartitionSpec
+				{
+					PartitionSpec *n = makeNode(PartitionSpec);
+
+					n->strategy = $3;
+					n->partParams = $5;
+					n->location = @1;
+
+					n->non_intervals = $7;
+
+					$$ = n;
+				}
 
 		;
+
+/* Optional sub partition key specification */
+OptSubPartitionSpec: SubPartitionSpec	{ $$ = $1; }
+		;
+
+SubPartitionSpec: '(' non_interval_exprs ')'
+				{
+					SubPartitionSpec *n = makeNode(SubPartitionSpec);
+
+					if($2 == NULL) {
+						$$ = NULL;
+						return;
+					}
+					n->location = @1;
+					n->cmds = $2;
+
+					$$ = n;
+				}
+		;
+
+non_interval_exprs:
+			non_interval_expr								{ $$ = list_make1($1); }
+			| non_interval_exprs ',' non_interval_expr		{ $$ = lappend($1, $3); }
+			| /*EMPTY*/			{ $$ = NULL; }
+		;
+
+non_interval_expr: PARTITION ColId VALUES LESS THAN '(' range_datum_list ')'
+				{
+					SubPartitionCmd *n = makeNode(SubPartitionCmd);
+					n->strategy = PARTITION_STRATEGY_RANGE;
+					n->cmp_op = QULIFICATION_TYPE_LS;
+					n->tablename = $2;
+					n->data = $7;
+					n->location = @1;
+
+					$$ = n;
+				}
+			| PARTITION ColId VALUES '(' partbound_datum_list ')'
+				{
+					SubPartitionCmd *n = makeNode(SubPartitionCmd);
+					n->strategy = PARTITION_STRATEGY_LIST;
+					n->tablename = $2;
+					n->data = $5;
+					n->location = @1;
+
+					$$ = n;
+				}
+		;
+
 interval_expr:  BEGIN_P '(' AexprConst ')' STEP '(' AexprConst ')' PARTITIONS '(' Iconst ')'
 				{
 					PartitionBy *n = makeNode(PartitionBy);
@@ -9066,11 +9063,11 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 			/* ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table */
 			| ALTER TABLE relation_expr EXCHANGE PARTITION relation_expr WITH TABLE relation_expr
 				{
+					ExchangeTableCmd *cmd = makeNode(ExchangeTableCmd);
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_TABLE;
 					n->missing_ok = false;
 
-					ExchangeTableCmd *cmd = makeNode(ExchangeTableCmd);
 					cmd->parent_rel = $3;
 					cmd->child_rel = $6;
 					cmd->ex_rel = $9;

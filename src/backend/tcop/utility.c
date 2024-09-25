@@ -3942,8 +3942,10 @@ ProcessUtilitySlow(ParseState *pstate,
                             if (OidIsValid(address.objectId))
                             {
 								/* now the parent table has been created */
-								/* construct child stmt by parent stmt for child_tb_data */
-								if (createStmt->child_tb_data && !createStmt->is_child)
+								/* construct child stmt by parent stmt with non_intervals */
+								if (createStmt->partspec && createStmt->partspec->non_intervals &&
+									createStmt->partspec->non_intervals->cmds &&
+									!createStmt->non_interval_child)
 								{
 									List *child_stmts = transformChildPartBounds(createStmt);
 									ListCell *lc = NULL;
@@ -3953,7 +3955,7 @@ ProcessUtilitySlow(ParseState *pstate,
 										if (IsA(stmt, CreateStmt))
 										{
 											CreateStmt *stmt_crt = (CreateStmt *)stmt;
-											if (stmt_crt->is_child)
+											if (stmt_crt->non_interval_child)
 											{
 												List *tmp_stmts =
 													transformCreateStmt(stmt_crt, queryString,
@@ -3978,7 +3980,7 @@ ProcessUtilitySlow(ParseState *pstate,
 									}
 								}
 
-                                /* 
+								/* 
                                   *  interval partition's parent table has been created, we need to create
                                   *  child tables.
                                                           */
@@ -4147,41 +4149,12 @@ ProcessUtilitySlow(ParseState *pstate,
 						if (node->type == T_AlterTableCmd)
 						{
 							AlterTableCmd *cmd = (AlterTableCmd *)node;
-							if (cmd->subtype == AT_CreatePartition)
+							if (cmd->subtype == AT_CreatePartition && cmd->def &&
+								IsA(cmd->def, PartitionCmd))
 							{
 								/* construct a child partition createStmt */
-								CreateStmt *createStmt = makeNode(CreateStmt);
-								Datumtablename *dt_tb = (Datumtablename *)cmd->def;
-								RangeVar *relation = makeNode(RangeVar);
-								relation->inh = true;
-								relation->relname = pstrdup(dt_tb->tablename);
-								relation->location = dt_tb->location;
-								relation->relpersistence = RELPERSISTENCE_PERMANENT;
-								createStmt->relation = relation;
-								createStmt->inhRelations = list_make1(copyObject(atstmt->relation));
-
-								/* transform Datumtablename to partbound in DefineRelation */
-								PartitionBoundSpec *partbound = makeNode(PartitionBoundSpec);
-								partbound->strategy = dt_tb->strategy;
-								partbound->location = dt_tb->location;
-								if (dt_tb->strategy == PARTITION_STRATEGY_RANGE)
-								{
-									partbound->upperdatums = copyObject(dt_tb->data);
-									partbound->lowerdatums = copyObject(dt_tb->data);
-								}
-								else if (dt_tb->strategy == PARTITION_STRATEGY_LIST)
-								{
-									partbound->listdatums = copyObject(dt_tb->data);
-								}
-								createStmt->partbound = partbound;
-
-								createStmt->child_tb_data = list_make1(dt_tb);
-								createStmt->is_child = true;
-
-								/* check range overlap */
-								// Relation parent_rel = heap_openrv(atstmt->relation,
-								// AccessShareLock); check_new_partition_bound();
-								// heap_close(parent_rel, AccessShareLock);
+								CreateStmt *createStmt =
+									transformPartitionCmd2CreateStmt(cmd->def, atstmt);
 
 								/* do createStmt now */
 								PlannedStmt *tmp_pstmt = copyObject(pstmt);

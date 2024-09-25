@@ -3995,8 +3995,7 @@ _outCreateStmtInfo(StringInfo str, const CreateStmt *node)
     WRITE_STRING_FIELD(tablespacename);
     WRITE_BOOL_FIELD(if_not_exists);
 #ifdef __OPENTENBASE__
-	WRITE_NODE_FIELD(child_tb_data);
-	WRITE_BOOL_FIELD(is_child);
+	WRITE_BOOL_FIELD(non_interval_child);
 #endif
 }
 
@@ -5103,9 +5102,21 @@ _outPartitionBy(StringInfo str, const PartitionBy *node)
 }
 
 static void
-_outDatumtablename(StringInfo str, const Datumtablename *node)
+_outSubPartitionSpec(StringInfo str, const SubPartitionSpec *node)
 {
-	WRITE_NODE_TYPE("DATUMTABLENAME");
+	WRITE_NODE_TYPE("SUBPARTITIONSPEC");
+
+	WRITE_CHAR_FIELD(strategy);
+	WRITE_STRING_FIELD(colname);
+	WRITE_INT_FIELD(colattr);
+	WRITE_NODE_FIELD(cmds);
+	WRITE_LOCATION_FIELD(location);
+}
+
+static void
+_outSubPartitionCmd(StringInfo str, const SubPartitionCmd *node)
+{
+	WRITE_NODE_TYPE("SUBPARTITIONCMD");
 
 	WRITE_CHAR_FIELD(strategy);
 	WRITE_ENUM_FIELD(cmp_op, QulificationType);
@@ -5835,8 +5846,12 @@ outNode(StringInfo str, const void *obj)
                 _outPartitionRangeDatum(str, obj);
                 break;
 #ifdef __OPENTENBASE__
-			case T_Datumtablename:
-				_outDatumtablename(str, obj);
+			case T_SubPartitionSpec:
+				_outSubPartitionSpec(str, obj);
+				break;
+			case T_SubPartitionCmd:
+				_outSubPartitionCmd(str, obj);
+				break;
             case T_PartitionBy:
                 _outPartitionBy(str,obj);
                 break;

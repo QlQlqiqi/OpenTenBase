@@ -644,7 +644,11 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
                 (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
                  errmsg("ON COMMIT can only be used on temporary tables")));
 
+#ifdef __OPENTENBASE__
+	if (stmt->partspec != NULL && strcmp(stmt->partspec->strategy, PARTITION_NON_INTERVAL) != 0)
+#else
     if (stmt->partspec != NULL)
+#endif
     {
         if (relkind != RELKIND_RELATION)
             elog(ERROR, "unexpected relkind: %d", (int) relkind);
@@ -1136,18 +1140,18 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
         bound = transformPartitionBound(pstate, parent, stmt->partbound);
 
 #ifdef __OPENTENBASE__
-		/* transform child_tb_data to Datumtablename and insert into inhRelation->partbound */
-		if (stmt->is_child && list_length(stmt->child_tb_data) == 1)
+		/* transform non_intervals to SubPartitionSpec and insert into inhRelation->partbound */
+		if (stmt->non_interval_child && stmt->partspec &&
+			list_length(stmt->partspec->non_intervals->cmds) == 1)
 		{
-			Datumtablename *dt_tb = linitial(stmt->child_tb_data);
-			if (dt_tb->strategy == PARTITION_STRATEGY_RANGE)
+			SubPartitionCmd *subpartcmd = linitial(stmt->partspec->non_intervals->cmds);
+			if (subpartcmd->strategy == PARTITION_STRATEGY_RANGE)
 			{
-				AddNewPartBound(pstate, parent, stmt->child_tb_data, bound->lowerdatums);
+				AddNewPartBound(pstate, parent, subpartcmd, bound->lowerdatums);
 			}
-			else if (dt_tb->strategy == PARTITION_STRATEGY_LIST)
+			else if (subpartcmd->strategy == PARTITION_STRATEGY_LIST)
 			{
-				stmt->partbound =
-					AddNewPartBound(pstate, parent, stmt->child_tb_data, bound->listdatums);
+				stmt->partbound = AddNewPartBound(pstate, parent, subpartcmd, bound->listdatums);
 				bound = transformPartitionBound(pstate, parent, stmt->partbound);
 			}
 		}
@@ -16517,6 +16521,9 @@ transformPartitionSpec(Relation rel, PartitionSpec *partspec, char *strategy)
     newspec->strategy = partspec->strategy;
     newspec->partParams = NIL;
     newspec->location = partspec->location;
+#ifdef __OPENTENBASE__
+	newspec->non_intervals = copyObject(partspec->non_intervals);
+#endif
 
     /* Parse partitioning strategy name */
 	if (pg_strcasecmp(partspec->strategy, "hash") == 0)

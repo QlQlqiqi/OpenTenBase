@@ -853,6 +853,32 @@ typedef struct PartitionBy
     int                 interval;       /* int of interval value */
     int                    nPartitions;    /* number of partitions to be created */
 }PartitionBy;
+
+/* sub partition cmd for each non-interval(range/list) partition */
+typedef struct SubPartitionCmd
+{
+	NodeTag type;
+
+	char strategy;				/* see PARTITION_STRATEGY codes below(like strategy in PartitionBoundSpec) */
+	QulificationType cmp_op;	/* compare operation kind for range */
+	char *tablename;			/* child table name */
+	List *data;					/* list of PartitionRangeDatum for range and Consts for list */
+
+	int location;				/* token location, or -1 if unknown */
+} SubPartitionCmd;
+
+/* sub partition Spec for non-interval(range/list) partitions */
+typedef struct SubPartitionSpec
+{
+	NodeTag type;
+
+	char strategy;		/* see PARTITION_STRATEGY codes below(like strategy in PartitionBoundSpec) */
+	char *colname;		/* name of partition by column*/
+	AttrNumber colattr;	/* attrnumber of partition by column */
+	List *cmds;			/* list of SubPartitionCmd */
+
+	int location;		/* token location, or -1 if unknown */
+} SubPartitionSpec;
 #endif
 
 /*
@@ -868,6 +894,7 @@ typedef struct PartitionSpec
     List       *partParams;        /* List of PartitionElems */
 #ifdef __OPENTENBASE__
     PartitionBy *interval;      /* used for interval partition */
+	SubPartitionSpec *non_intervals;		/* list and used for non-interval(range/list) partitons */
 #endif
     int            location;        /* token location, or -1 if unknown */
 } PartitionSpec;
@@ -879,6 +906,7 @@ typedef struct PartitionSpec
 #ifdef __OPENTENBASE__
 #define PARTITION_STRATEGY_INTERVAL    'i'
 #define PARTITION_INTERVAL "interval"
+#define PARTITION_NON_INTERVAL "non-interval"
 #endif
 
 /*
@@ -930,20 +958,6 @@ typedef struct PartitionRangeDatum
 
     int            location;        /* token location, or -1 if unknown */
 } PartitionRangeDatum;
-
-#ifdef __OPENTENBASE__
-/* save tablename and PartitionRangeDatum */
-typedef struct Datumtablename
-{
-	NodeTag type;
-
-	char strategy;			 /* see PARTITION_STRATEGY codes above(like in PartitionBoundSpec) */
-	QulificationType cmp_op; /* compare operation kind for range */
-	char *tablename;		 /* child table name */
-	List *data;				 /* list of PartitionRangeDatum for range and Consts for list */
-	int location;			 /* token location, or -1 if unknown */
-} Datumtablename;
-#endif
 
 /*
  * PartitionCmd - info for ALTER TABLE/INDEX ATTACH/DETACH PARTITION commands
@@ -2190,9 +2204,8 @@ typedef struct CreateStmt
     bool        interval_child;     /* is interval partition child? */
     int            interval_child_idx; /* interval partition child's index */          
     Oid            interval_parentId;  /* interval partition parent's oid */
-    /* for partition of with oracle schema */
-	List *child_tb_data; /* list of Datumtablename */
-	bool is_child;		 /* child stmt in partition of clause */
+	/* for non-interval partition */
+	bool non_interval_child;		/* is non-interval partition child? */
 #endif
 } CreateStmt;
 
