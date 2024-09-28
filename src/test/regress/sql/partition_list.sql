@@ -296,35 +296,3 @@ insert into list_pt values(1, 14, '123', 31, 1003);
 select count(*) from list_pt;
 
 drop table list_pt;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
