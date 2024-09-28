@@ -4194,6 +4194,7 @@ _readExchangeTableCmd(void)
 {
 	READ_LOCALS(ExchangeTableCmd);
 
+	READ_ENUM_FIELD(option, EXCHANGE_TABLE_OPTION);
 	READ_NODE_FIELD(parent_rel);
 	READ_NODE_FIELD(child_rel);
 	READ_NODE_FIELD(ex_rel);

@@ -4164,6 +4164,31 @@ ProcessUtilitySlow(ParseState *pstate,
 								break;
 							}
 						}
+						else if (node->type == T_ExchangeTableCmd)
+						{
+							ExchangeTableCmd *cmd = (ExchangeTableCmd *) node;
+							cmd->parent_rel = copyObject(atstmt->relation);
+							if (LOCAL_PARALLEL_DDL)
+							{
+								bool is_temp = false;
+								PGXCNodeHandle *leaderCnHandle = find_ddl_leader_cn();
+								bool is_leader_cn = is_ddl_leader_cn(leaderCnHandle->nodename);
+								RemoteQueryExecType exec_type =
+									GetExchangeTableExecType(cmd, &is_temp);
+								if (!is_leader_cn)
+								{
+									SendLeaderCNUtility(queryString, is_temp);
+								}
+								ExecExchangeTable(cmd);
+								ExecUtilityStmtOnNodes(parsetree, queryString, NULL, sentToRemote,
+													   false, exec_type, is_temp, false);
+							}
+							else
+							{
+								ExecExchangeTable(cmd);
+							}
+							break;
+						}
 					}
 #endif
                     /*

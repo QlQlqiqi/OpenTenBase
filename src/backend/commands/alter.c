@@ -318,56 +318,6 @@ AlterObjectRename_internal(Relation rel, Oid objectId, const char *new_name)
     ReleaseSysCache(oldtup);
 }
 
-#ifdef __OPENTENBASE__
-void ExecExchangeCmd(RenameStmt *stmt)
-{
-	// check whether the rerelation do exists
-	Oid parent_rel_oid = RangeVarGetRelid(stmt->ex_cmd->parent_rel, AccessExclusiveLock, false);
-	if (!OidIsValid(parent_rel_oid))
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
-						errmsg("relation %s does not exist", stmt->ex_cmd->parent_rel->relname)));
-	}
-	Oid child_rel_oid = RangeVarGetRelid(stmt->ex_cmd->child_rel, AccessExclusiveLock, false);
-	if (!OidIsValid(child_rel_oid))
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
-						errmsg("relation %s does not exist", stmt->ex_cmd->child_rel->relname)));
-	}
-	Oid ex_rel_oid = RangeVarGetRelid(stmt->ex_cmd->ex_rel, AccessExclusiveLock, false);
-	if (!OidIsValid(ex_rel_oid))
-	{
-		ereport(ERROR, (errcode(ERRCODE_INTEGRITY_CONSTRAINT_VIOLATION),
-						errmsg("relation %s does not exist", stmt->ex_cmd->ex_rel->relname)));
-	}
-
-	Relation parent_rel = heap_openrv(stmt->ex_cmd->parent_rel, AccessExclusiveLock);
-	Relation child_rel = heap_openrv(stmt->ex_cmd->child_rel, AccessExclusiveLock);
-	Relation ex_rel = heap_openrv(stmt->ex_cmd->ex_rel, AccessExclusiveLock);
-
-	List *rels = NIL;
-	rels = lappend(rels, parent_rel);
-	List *stmts = MakeRenameStmtFromExchangeCmd(stmt, rels);
-	rels = lappend(rels, child_rel);
-	rels = lappend(rels, ex_rel);
-
-	Assert(list_length(stmts == 3));
-	ListCell *lc;
-	foreach (lc, stmts)
-	{
-		RenameStmt *stmt = lfirst(lc);
-		ExecRenameStmt(stmt);
-		CommandCounterIncrement();
-	}
-
-	// close but keep lock
-	foreach (lc, rels)
-	{
-		heap_close(lfirst(lc), NoLock);
-	}
-}
-#endif
-
 /*
  * Executes an ALTER OBJECT / RENAME TO statement.  Based on the object
  * type, the function appropriate to that type is executed.
@@ -377,16 +327,6 @@ void ExecExchangeCmd(RenameStmt *stmt)
 ObjectAddress
 ExecRenameStmt(RenameStmt *stmt)
 {// #lizard forgives
-
-#ifdef __OPENTENBASE__
-	// for exchange table stmt and return invalid address
-	if (stmt->ex_cmd)
-	{
-		ExecExchangeCmd(stmt);
-		return InvalidObjectAddress;
-	}
-#endif
-
     switch (stmt->renameType)
     {
         case OBJECT_TABCONSTRAINT:

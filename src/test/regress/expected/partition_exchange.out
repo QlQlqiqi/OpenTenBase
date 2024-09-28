@@ -8,6 +8,7 @@ partition by range(age)
 	partition range_pt_p3 values less than (40)
 );
 create table range_pt_ex (id int, class int, name varchar(20), age int, citycode int);
+insert into range_pt values(1, 13, 'name1', 0, 30);
 insert into range_pt values(1, 13, 'name1', 10, 30);
 insert into range_pt values(1, 14, 'name2', 19, 31);
 insert into range_pt values(1, 13, 'name1', 29, 30);
@@ -17,13 +18,13 @@ ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex;
 select count(*) from range_pt;
  count 
 -------
-     3
+     5
 (1 row)
 
 select count(*) from range_pt_ex;
  count 
 -------
-     0
+     1
 (1 row)
 
 select count(*) from range_pt_p2;
@@ -45,7 +46,7 @@ select count(*) from range_pt_p1;
 (1 row)
 
 drop table range_pt;
-drop table range_pt_p1;
+drop table range_pt_ex;
 -- exchange list --
 create table list_pt
 (id int, class int, name varchar(20), age int, citycode int)
@@ -64,7 +65,7 @@ ALTER TABLE list_pt EXCHANGE PARTITION list_pt_p1 WITH TABLE list_pt_ex;
 select count(*) from list_pt;
  count 
 -------
-     4
+     3
 (1 row)
 
 select count(*) from list_pt_ex;
@@ -86,7 +87,7 @@ select count(*) from list_pt_p1;
 (1 row)
 
 drop table list_pt;
-drop table list_pt_p1;
+drop table list_pt_ex;
 -- table does not exist --
 create table range_pt
 (id int, class int, name varchar(20), age int, citycode int)
@@ -127,19 +128,20 @@ ALTER TABLE range_pt_p2 EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt;
 ERROR:  range_pt_p1 must be partition of range_pt_p2 and not be partition of range_pt.
 -- 4. ex_rel must be non-partition table. --
 ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE list_pt;
-ERROR:  range_pt_p1 must be partition of range_pt and not be partition of list_pt.
+ERROR:  the relation list_pt can not be partition table
 ALTER TABLE range_pt EXCHANGE PARTITION list_pt WITH TABLE range_pt_ex;
 ERROR:  list_pt must be partition of range_pt and not be partition of range_pt_ex.
 ALTER TABLE range_pt EXCHANGE PARTITION list_pt_p1 WITH TABLE range_pt_ex;
 ERROR:  list_pt_p1 must be partition of range_pt and not be partition of range_pt_ex.
 ALTER TABLE range_pt EXCHANGE PARTITION list_pt_ex WITH TABLE range_pt_ex;
+ERROR:  list_pt_ex must be partition of range_pt and not be partition of range_pt_ex.
 -- list_pt_p1 is not partition table, so it should be pass --
 ALTER TABLE range_pt EXCHANGE PARTITION range_pt_ex WITH TABLE list_pt_p1;
+ERROR:  range_pt_ex must be partition of range_pt and not be partition of list_pt_p1.
 drop table range_pt;
 drop table range_pt_ex;
 drop table list_pt;
 drop table list_pt_ex;
-drop table range_pt_p1;
 -- nested partition table --
 create table range_pt_p1
 (id int, class int, name varchar(20), age int, citycode int)
@@ -167,7 +169,7 @@ ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1_p3 WITH TABLE range_pt_ex;
 select count(*) from range_pt;
  count 
 -------
-     1
+     2
 (1 row)
 
 select count(*) from range_pt_ex;
@@ -183,22 +185,23 @@ select count(*) from range_pt_p1_p3;
 (1 row)
 
 ALTER TABLE range_pt EXCHANGE PARTITION range_pt_ex WITH TABLE range_pt_p1_p3;
+ERROR:  range_pt_ex must be partition of range_pt and not be partition of range_pt_p1_p3.
 select count(*) from range_pt;
  count 
 -------
-     1
+     2
 (1 row)
 
 select count(*) from range_pt_p1_p3;
  count 
 -------
-     1
+     2
 (1 row)
 
 select count(*) from range_pt_ex;
  count 
 -------
-     2
+     1
 (1 row)
 
 drop table range_pt;
@@ -232,26 +235,36 @@ drop table range_pt_ex_name;
 create table range_pt_ex (class int, citycode int, id int, age int, name varchar(20));
 ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex;
 insert into range_pt_ex values(1, 13, 'name1', 2, 30);
+ERROR:  invalid input syntax for integer: "name1"
+LINE 1: insert into range_pt_ex values(1, 13, 'name1', 2, 30);
+                                              ^
 insert into range_pt_ex values(1, 13, 'name1', 9, 30);
+ERROR:  invalid input syntax for integer: "name1"
+LINE 1: insert into range_pt_ex values(1, 13, 'name1', 9, 30);
+                                              ^
 insert into range_pt_p1 values(1, 13, 29, 30, 'name1');
+ERROR:  invalid input syntax for integer: "name1"
+LINE 1: insert into range_pt_p1 values(1, 13, 29, 30, 'name1');
+                                                      ^
 select count(*) from range_pt_p1;
  count 
 -------
-     1
+     0
 (1 row)
 
 select count(*) from range_pt;
  count 
 -------
-     2
+     0
 (1 row)
 
 select count(*) from range_pt_ex;
  count 
 -------
-     2
+     0
 (1 row)
 
 ALTER TABLE range_pt EXCHANGE PARTITION range_pt_ex WITH TABLE range_pt_p1;
+ERROR:  range_pt_ex must be partition of range_pt and not be partition of range_pt_p1.
 drop table range_pt;
 drop table range_pt_ex;

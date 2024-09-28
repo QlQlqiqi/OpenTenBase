@@ -259,6 +259,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 	PGXCSubCluster		*subclus;
 /* PGXC_END */
 	A_Const				*a_const;
+	EXCHANGE_TABLE_OPTION	exchange_table_option;
 	PartitionElem		*partelem;
 	PartitionSpec		*partspec;
 	SubPartitionSpec	*subpartspec;
@@ -631,6 +632,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <defelt>     hash_partbound_elem
 
 %type <node>	lock_param
+%type <exchange_table_option>	opt_include_index
 
 %type <partfor>	   opt_partition_for partition_for
 %type <partby>     interval_expr
@@ -2438,6 +2440,17 @@ alter_table_cmd:
 					n->def = (Node *)exchange;
 					$$ = (Node *)n;
 				}
+			/* ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table */
+			| EXCHANGE PARTITION relation_expr WITH TABLE relation_expr opt_include_index
+				{
+					ExchangeTableCmd *n = makeNode(ExchangeTableCmd);
+
+					n->option = $7;
+					n->child_rel = $3;
+					n->ex_rel = $6;
+
+					$$ = (Node *)n;
+				}
 			| SET PARTITION BEGIN_P '(' AexprConst ')'
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
@@ -2776,6 +2789,10 @@ alter_table_cmd:
 					$$ = (Node *)n;
 				}
 /* _SHARDING_ END*/
+		;
+
+opt_include_index: INCLUDING INDEX		{ $$ = EXCHANGE_TABLE_INCLUDING_INDEX; }
+			| /* EMPTY */				{ $$ = EXCHANGE_TABLE_EXCLUDING_INDEX; }
 		;
 
 alter_column_default:
@@ -9058,22 +9075,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 					n->subname = NULL;
 					n->newname = $6;
 					n->missing_ok = false;
-					$$ = (Node *)n;
-				}
-			/* ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table */
-			| ALTER TABLE relation_expr EXCHANGE PARTITION relation_expr WITH TABLE relation_expr
-				{
-					ExchangeTableCmd *cmd = makeNode(ExchangeTableCmd);
-					RenameStmt *n = makeNode(RenameStmt);
-					n->renameType = OBJECT_TABLE;
-					n->missing_ok = false;
-
-					cmd->parent_rel = $3;
-					cmd->child_rel = $6;
-					cmd->ex_rel = $9;
-
-					n->ex_cmd = cmd;
-
 					$$ = (Node *)n;
 				}
 			| ALTER TABLE IF_P EXISTS relation_expr RENAME TO name

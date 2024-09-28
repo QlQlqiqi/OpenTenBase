@@ -9,6 +9,7 @@ partition by range(age)
 );
 create table range_pt_ex (id int, class int, name varchar(20), age int, citycode int);
 
+insert into range_pt values(1, 13, 'name1', 0, 30);
 insert into range_pt values(1, 13, 'name1', 10, 30);
 insert into range_pt values(1, 14, 'name2', 19, 31);
 insert into range_pt values(1, 13, 'name1', 29, 30);
@@ -24,7 +25,7 @@ select count(*) from range_pt_p3;
 select count(*) from range_pt_p1;
 
 drop table range_pt;
-drop table range_pt_p1;
+drop table range_pt_ex;
 
 -- exchange list --
 create table list_pt
@@ -50,7 +51,7 @@ select count(*) from list_pt_p2;
 select count(*) from list_pt_p1;
 
 drop table list_pt;
-drop table list_pt_p1;
+drop table list_pt_ex;
 
 -- table does not exist --
 create table range_pt
@@ -101,7 +102,6 @@ drop table range_pt;
 drop table range_pt_ex;
 drop table list_pt;
 drop table list_pt_ex;
-drop table range_pt_p1;
 
 -- nested partition table --
 create table range_pt_p1

@@ -3018,6 +3018,14 @@ typedef struct InlineCodeBlock
 } InlineCodeBlock;
 
 #ifdef __OPENTENBASE__
+/* whether reindex table after */
+typedef enum EXCHANGE_TABLE_OPTION
+{
+	EXCHANGE_TABLE_EXCLUDING_INDEX = 0,
+	/* reindex child_table table and ordinary_table */
+	EXCHANGE_TABLE_INCLUDING_INDEX = 1,
+} EXCHANGE_TABLE_OPTION;
+
 /* ----------------------
  * ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table
  * ----------------------
@@ -3026,9 +3034,10 @@ typedef struct ExchangeTableCmd
 {
 	NodeTag type;
 
-	RangeVar *parent_rel; /* parent_table */
-	RangeVar *child_rel;  /* child_table */
-	RangeVar *ex_rel;	  /* ordinary_table */
+	EXCHANGE_TABLE_OPTION option;	/* reindex table after exchange data bewteen tables */
+	RangeVar *parent_rel;			/* parent_table */
+	RangeVar *child_rel;			/* child_table */
+	RangeVar *ex_rel;				/* ordinary_table */
 } ExchangeTableCmd;
 #endif
 

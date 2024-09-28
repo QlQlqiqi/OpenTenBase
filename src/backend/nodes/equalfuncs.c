@@ -1456,6 +1456,7 @@ _equalRenameStmt(const RenameStmt *a, const RenameStmt *b)
 static bool
 _equalExchangeTableCmd(const ExchangeTableCmd *a, const ExchangeTableCmd *b)
 {
+	COMPARE_SCALAR_FIELD(option);
 	COMPARE_NODE_FIELD(parent_rel);
 	COMPARE_NODE_FIELD(child_rel);
 	COMPARE_NODE_FIELD(ex_rel);

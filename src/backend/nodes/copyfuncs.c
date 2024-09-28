@@ -3875,6 +3875,7 @@ _copyExchangeTableCmd(const ExchangeTableCmd *from)
 {
 	ExchangeTableCmd *newnode = makeNode(ExchangeTableCmd);
 
+	COPY_SCALAR_FIELD(option);
 	COPY_NODE_FIELD(parent_rel);
 	COPY_NODE_FIELD(child_rel);
 	COPY_NODE_FIELD(ex_rel);
