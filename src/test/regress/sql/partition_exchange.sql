@@ -1,3 +1,41 @@
+-- test relmap: check if the filenode of relmap in pg_class is the same before and after --
+CREATE OR REPLACE FUNCTION test_relmap(t TEXT, t1 TEXT, t2 TEXT)
+RETURNS TEXT
+AS $$
+DECLARE
+	filenode_t1_old OID;
+	filenode_t2_old OID;
+	filenode_t1_new OID;
+	filenode_t2_new OID;
+	mysql TEXT;
+BEGIN
+	BEGIN
+		SELECT relfilenode INTO filenode_t1_old from pg_class where relname = t1;
+		SELECT relfilenode INTO filenode_t2_old from pg_class where relname = t2;
+
+		mysql := 'ALTER TABLE '
+			|| t
+			|| ' EXCHANGE PARTITION '
+			|| t1
+			|| ' WITH TABLE '
+			|| t2
+			|| ';';
+		EXECUTE mysql;
+
+		SELECT relfilenode INTO filenode_t1_new from pg_class where relname = t1;
+		SELECT relfilenode INTO filenode_t2_new from pg_class where relname = t2;
+		IF filenode_t1_old = filenode_t2_new THEN
+			RETURN 'equal';
+		ELSE
+			RETURN 'non-equal';
+		END IF;
+	COMMIT;
+	END;
+EXCEPTION WHEN OTHERS THEN
+	RETURN 'error';
+END;
+$$ LANGUAGE plpgsql;
+
 -- exchange range --
 create table range_pt
 (id int, class int, name varchar(20), age int, citycode int)
@@ -16,7 +54,7 @@ insert into range_pt values(1, 13, 'name1', 29, 30);
 insert into range_pt_ex values(1, 13, 'name1', 69, 30);
 insert into range_pt_ex values(1, 13, 'name1', 49, 30);
 
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex;
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
 
 select count(*) from range_pt;
 select count(*) from range_pt_ex;
@@ -43,7 +81,7 @@ insert into list_pt values(1, 13, 'name1', 30, 1004);
 insert into list_pt values(1, 14, 'name2', 31, 1003);
 insert into list_pt_ex values(1, 14, 'name2', 31, 1008);
 
-ALTER TABLE list_pt EXCHANGE PARTITION list_pt_p1 WITH TABLE list_pt_ex;
+SELECT test_relmap('list_pt', 'list_pt_p1', 'list_pt_ex');
 
 select count(*) from list_pt;
 select count(*) from list_pt_ex;
@@ -72,9 +110,9 @@ partition by list(citycode)
 );
 create table list_pt_ex (id int, class int, name varchar(20), age int, citycode int);
 
-ALTER TABLE list_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex;
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p4 WITH TABLE range_pt_ex;
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE list_pt_ex;
+SELECT test_relmap('list_pt', 'range_pt_p1', 'range_pt_ex');
+SELECT test_relmap('range_pt', 'range_pt_p4', 'range_pt_ex');
+SELECT test_relmap('range_pt', 'range_pt_p1', 'list_pt_ex');
 
 -- 1. child_rel must be partition of parent_rel and not be partition of ex_rel. --
 ALTER TABLE range_pt EXCHANGE PARTITION range_pt_ex WITH TABLE range_pt_ex;
@@ -131,13 +169,13 @@ insert into range_pt values(1, 13, 'name1', 39, 30);
 insert into range_pt_ex values(1, 13, 'name1', 69, 30);
 insert into range_pt_ex values(1, 13, 'name1', 49, 30);
 
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1_p3 WITH TABLE range_pt_ex;
+SELECT test_relmap('range_pt', 'range_pt_p1_p3', 'range_pt_ex');
 
 select count(*) from range_pt;
 select count(*) from range_pt_ex;
 select count(*) from range_pt_p1_p3;
 
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_ex WITH TABLE range_pt_p1_p3;
+SELECT test_relmap('range_pt', 'range_pt_ex', 'range_pt_p1_p3');
 
 select count(*) from range_pt;
 select count(*) from range_pt_p1_p3;
@@ -160,29 +198,21 @@ create table range_pt_ex_char (id int, class int, name varchar(20), age char, ci
 create table range_pt_ex_varchar_30 (id int, class int, name varchar(30), age char, citycode int);
 create table range_pt_ex_name (id int, class int, name varchar(20), age_other char, citycode int);
 
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex_int;
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex_char;
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex_varchar_30;
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex_name;
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex_int');
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex_char');
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex_varchar_30');
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex_name');
 
 drop table range_pt_ex_int;
 drop table range_pt_ex_char;
 drop table range_pt_ex_varchar_30;
 drop table range_pt_ex_name;
 
--- exchange partition table with same structure but wrong order --
+-- exchange partition table with same structure but wrong order (it should be error) --
 create table range_pt_ex (class int, citycode int, id int, age int, name varchar(20));
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_p1 WITH TABLE range_pt_ex;
-
-insert into range_pt_ex values(1, 13, 'name1', 2, 30);
-insert into range_pt_ex values(1, 13, 'name1', 9, 30);
-insert into range_pt_p1 values(1, 13, 29, 30, 'name1');
-
-select count(*) from range_pt_p1;
-select count(*) from range_pt;
-select count(*) from range_pt_ex;
-
-ALTER TABLE range_pt EXCHANGE PARTITION range_pt_ex WITH TABLE range_pt_p1;
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
 
 drop table range_pt;
 drop table range_pt_ex;
+
+DROP FUNCTION IF EXISTS test_relmap;

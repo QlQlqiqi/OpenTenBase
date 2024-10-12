@@ -4523,19 +4523,9 @@ IsSameTableStructure(Relation rel1, Relation rel2)
 	for (int i = 0; i < natts; i++)
 	{
 		FormData_pg_attribute *attr1 = TupleDescAttr(desc1, i);
-		FormData_pg_attribute *attr2 = NULL;
-		bool found = false;
-		for (int j = 0; j < natts; j++)
-		{
-			attr2 = TupleDescAttr(desc2, j);
-			// check column name
-			if (strcmp(NameStr(attr1->attname), NameStr(attr2->attname)) == 0)
-			{
-				found = true;
-				break;
-			}
-		}
-		if (!found)
+		FormData_pg_attribute *attr2 = TupleDescAttr(desc2, i);
+		// check column name
+		if (strcmp(NameStr(attr1->attname), NameStr(attr2->attname)) != 0)
 		{
 			return false;
 		}
