@@ -2443,11 +2443,15 @@ alter_table_cmd:
 			/* ALTER TABLE parent_table EXCHANGE PARTITION child_table WITH TABLE ordinary_table */
 			| EXCHANGE PARTITION relation_expr WITH TABLE relation_expr opt_include_index
 				{
-					ExchangeTableCmd *n = makeNode(ExchangeTableCmd);
+					AlterTableCmd *n = makeNode(AlterTableCmd);
+					ExchangeTableCmd *exchange = makeNode(ExchangeTableCmd);
 
-					n->option = $7;
-					n->child_rel = $3;
-					n->ex_rel = $6;
+					exchange->option = $7;
+					exchange->child_rel = $3;
+					exchange->ex_rel = $6;
+
+					n->subtype = AT_ExchangeTable;
+					n->def = (Node *)exchange;
 
 					$$ = (Node *)n;
 				}

@@ -4142,12 +4142,12 @@ ProcessUtilitySlow(ParseState *pstate,
                     LOCKMODE    lockmode;
 
 #ifdef __OPENTENBASE__
-					/* ALTER TABLE <name> ADD PARTITION <name> values */
 					if (list_length(atstmt->cmds) == 1)
 					{
 						Node *node = linitial(atstmt->cmds);
 						if (node->type == T_AlterTableCmd)
 						{
+							/* ALTER TABLE <name> ADD PARTITION <name> values */
 							AlterTableCmd *cmd = (AlterTableCmd *)node;
 							if (cmd->subtype == AT_CreatePartition && cmd->def &&
 								IsA(cmd->def, PartitionCmd))
@@ -4163,31 +4163,34 @@ ProcessUtilitySlow(ParseState *pstate,
 												   queryEnv, dest, sentToRemote, completionTag);
 								break;
 							}
-						}
-						else if (node->type == T_ExchangeTableCmd)
-						{
-							ExchangeTableCmd *cmd = (ExchangeTableCmd *) node;
-							cmd->parent_rel = copyObject(atstmt->relation);
-							if (LOCAL_PARALLEL_DDL)
+							/* ALTER TABLE <name> EXCHANGE PARTITION <name> WITH TABLE <name> */
+							else if (cmd->subtype == AT_ExchangeTable && cmd->def &&
+									 IsA(cmd->def, ExchangeTableCmd))
 							{
-								bool is_temp = false;
-								PGXCNodeHandle *leaderCnHandle = find_ddl_leader_cn();
-								bool is_leader_cn = is_ddl_leader_cn(leaderCnHandle->nodename);
-								RemoteQueryExecType exec_type =
-									GetExchangeTableExecType(cmd, &is_temp);
-								if (!is_leader_cn)
+								ExchangeTableCmd *exchange = (ExchangeTableCmd *)cmd->def;
+								exchange->parent_rel = copyObject(atstmt->relation);
+								if (!sentToRemote && LOCAL_PARALLEL_DDL)
 								{
-									SendLeaderCNUtility(queryString, is_temp);
+									bool is_temp = false;
+									PGXCNodeHandle *leaderCnHandle = find_ddl_leader_cn();
+									bool is_leader_cn = is_ddl_leader_cn(leaderCnHandle->nodename);
+									RemoteQueryExecType exec_type =
+										GetExchangeTableExecType(exchange, &is_temp);
+									if (!is_leader_cn)
+									{
+										SendLeaderCNUtility(queryString, is_temp);
+									}
+									ExecExchangeTable(exchange);
+									ExecUtilityStmtOnNodes(parsetree, queryString, NULL,
+														   sentToRemote, false, exec_type, is_temp,
+														   false);
 								}
-								ExecExchangeTable(cmd);
-								ExecUtilityStmtOnNodes(parsetree, queryString, NULL, sentToRemote,
-													   false, exec_type, is_temp, false);
+								else
+								{
+									ExecExchangeTable(exchange);
+								}
+								break;
 							}
-							else
-							{
-								ExecExchangeTable(cmd);
-							}
-							break;
 						}
 					}
 #endif
@@ -5491,12 +5494,6 @@ static RemoteQueryExecType GetExchangeTableExecType(ExchangeTableCmd *cmd, bool 
 
 static RemoteQueryExecType GetRenameExecType(RenameStmt *stmt, bool *is_temp)
 {
-#ifdef __OPENTENBASE__
-	if (stmt->ex_cmd)
-	{
-		return GetExchangeTableExecType(stmt->ex_cmd, is_temp);
-	}
-#endif
 	RemoteQueryExecType	exec_type = EXEC_ON_NONE;
 	/*
 	 * Get the necessary details about the relation before we
