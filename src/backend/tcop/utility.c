@@ -4164,7 +4164,7 @@ ProcessUtilitySlow(ParseState *pstate,
 								break;
 							}
 							/* ALTER TABLE <name> EXCHANGE PARTITION <name> WITH TABLE <name> */
-							else if (cmd->subtype == AT_ExchangeTable && cmd->def &&
+							else if (cmd->subtype == AT_ExchangeTableCmd && cmd->def &&
 									 IsA(cmd->def, ExchangeTableCmd))
 							{
 								ExchangeTableCmd *exchange = (ExchangeTableCmd *)cmd->def;

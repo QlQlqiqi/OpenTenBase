@@ -1921,6 +1921,7 @@ typedef enum AlterTableType
     AT_DropPartitions,
     AT_ExchangeIndexName,
     AT_ModifyStartValue,
+	AT_ExchangeTableCmd,				/* exchange table data */
 #endif
 #ifdef _SHARDING_
     AT_RebuildExtent,            /* Rebuild extent file */
@@ -1933,9 +1934,6 @@ typedef enum AlterTableType
     AT_GenericOptions,            /* OPTIONS (...) */
     AT_AttachPartition,            /* ATTACH PARTITION */
     AT_DetachPartition,            /* DETACH PARTITION */
-#ifdef __OPENTENBASE__
-	AT_ExchangeTable,				/* exchange table data */
-#endif
     AT_AddIdentity,                /* ADD IDENTITY */
     AT_SetIdentity,                /* SET identity column options */
     AT_DropIdentity                /* DROP IDENTITY */

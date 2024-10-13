@@ -2445,14 +2445,11 @@ alter_table_cmd:
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					ExchangeTableCmd *exchange = makeNode(ExchangeTableCmd);
-
+					n->subtype = AT_ExchangeTableCmd;
 					exchange->option = $7;
 					exchange->child_rel = $3;
 					exchange->ex_rel = $6;
-
-					n->subtype = AT_ExchangeTable;
 					n->def = (Node *)exchange;
-
 					$$ = (Node *)n;
 				}
 			| SET PARTITION BEGIN_P '(' AexprConst ')'
