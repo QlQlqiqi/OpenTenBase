@@ -4503,44 +4503,270 @@ IsPartitionChild(Relation child_rel, Relation parent_rel, List *rels)
 	return false;
 }
 
+static char *
+GetConsrcFromHeap(HeapTuple tup)
+{
+	bool isnull;
+	Datum val = SysCacheGetAttr(CONSTROID, tup, Anum_pg_constraint_conbin, &isnull);
+	if (isnull)
+	{
+		return NULL;
+	}
+	Node *expr = stringToNode(TextDatumGetCString(val));
+	List *context;
+	Form_pg_constraint currcon = (Form_pg_constraint)GETSTRUCT(tup);
+	if (currcon->conrelid != InvalidOid)
+	{
+		/* relation constraint */
+		context = deparse_context_for(get_rel_name(currcon->conrelid), currcon->conrelid);
+	}
+	else
+	{
+		/* domain constraint --- can't have Vars */
+		context = NIL;
+	}
+
+	return deparse_expression(expr, context, false, false);
+}
+
+static bool
+GetConidString(HeapTuple tup, StringInfoData buf, Oid conid)
+{
+	bool isnull;
+	Datum val = SysCacheGetAttr(CONSTROID, tup, Anum_pg_constraint_conkey, &isnull);
+	if (isnull)
+	{
+		return false;
+	}
+	decompile_column_index_array_wrap(val, conid, &buf);
+	return true;
+}
+
+static bool
+GetExeclusiveString(HeapTuple tup, StringInfoData buf)
+{
+	Datum val;
+	bool isnull;
+	Datum *elems;
+	int nElems;
+	int i;
+	Oid *operators;
+
+	val = SysCacheGetAttr(CONSTROID, tup, Anum_pg_constraint_conexclop, &isnull);
+	if (isnull)
+	{
+		return false;
+	}
+	deconstruct_array(DatumGetArrayTypeP(val), OIDOID, sizeof(Oid), true, 'i', &elems, NULL,
+					  &nElems);
+
+	operators = (Oid *)palloc(nElems * sizeof(Oid));
+	for (i = 0; i < nElems; i++)
+		operators[i] = DatumGetObjectId(elems[i]);
+	Form_pg_constraint currcon = (Form_pg_constraint)GETSTRUCT(tup);
+
+	/* pg_get_indexdef_columns_with_operators does the rest */
+	/* suppress tablespace because pg_dump wants it that way */
+	appendStringInfoString(&buf,
+						   pg_get_indexdef_columns_with_operators(currcon->conindid, operators));
+	return true;
+}
+
 /*
  * check whether the table structure is same as and the both is ordinary table
  *
- * note: this function do *NOT* check constraints
-*/
+ * note: this function can check constraints
+ */
 bool
 IsSameTableStructure(Relation rel1, Relation rel2)
 {
+	bool is_same = true;
+
 	// same
 	TupleDesc desc1 = RelationGetDescr(rel1);
 	TupleDesc desc2 = RelationGetDescr(rel2);
 	if (desc1->natts != desc2->natts)
 	{
-		return false;
+		is_same = false;
+		goto exit;
+	}
+	else
+	{
+		int natts = desc1->natts;
+		for (int i = 0; i < natts; i++)
+		{
+			FormData_pg_attribute *attr1 = TupleDescAttr(desc1, i);
+			FormData_pg_attribute *attr2 = TupleDescAttr(desc2, i);
+			// check column name
+			if (strcmp(NameStr(attr1->attname), NameStr(attr2->attname)) != 0)
+			{
+				is_same = false;
+				goto exit;
+			}
+			// check column type
+			if (attr1->atttypid != attr2->atttypid)
+			{
+				is_same = false;
+				goto exit;
+			}
+			// check column length
+			if (attr1->attlen != attr2->attlen || attr1->atttypmod != attr2->atttypmod)
+			{
+				is_same = false;
+				goto exit;
+			}
+		}
 	}
 
-	int natts = desc1->natts;
-	for (int i = 0; i < natts; i++)
+	/* must be same constraints */
+	ScanKeyData key;
+	HeapTuple contuple1;
+	HeapTuple contuple2;
+	StringInfoData buf1;
+	StringInfoData buf2;
+	Oid relid1 = RelationGetRelid(rel1);
+	Oid relid2 = RelationGetRelid(rel2);
+
+	Relation conrel = heap_open(ConstraintRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&key, Anum_pg_constraint_conrelid, BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid1));
+	SysScanDesc scan1 = systable_beginscan(conrel, ConstraintRelidIndexId, true, NULL, 1, &key);
+	ScanKeyInit(&key, Anum_pg_constraint_conrelid, BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid2));
+	SysScanDesc scan2 = systable_beginscan(conrel, ConstraintRelidIndexId, true, NULL, 1, &key);
+	while (true)
 	{
-		FormData_pg_attribute *attr1 = TupleDescAttr(desc1, i);
-		FormData_pg_attribute *attr2 = TupleDescAttr(desc2, i);
-		// check column name
-		if (strcmp(NameStr(attr1->attname), NameStr(attr2->attname)) != 0)
+		int validate_res = HeapTupleIsValid(contuple1 = systable_getnext(scan1)) +
+						   HeapTupleIsValid(contuple2 = systable_getnext(scan2));
+		if (validate_res == 0)
 		{
-			return false;
+			break;
 		}
-		// check column type
-		if (attr1->atttypid != attr2->atttypid)
+		else if (validate_res == 1)
 		{
-			return false;
+			is_same = false;
+			goto cleanup;
 		}
-		// check column length
-		if (attr1->attlen != attr2->attlen || attr1->atttypmod != attr2->atttypmod)
+		Form_pg_constraint currcon1 = (Form_pg_constraint)GETSTRUCT(contuple1);
+		Form_pg_constraint currcon2 = (Form_pg_constraint)GETSTRUCT(contuple2);
+
+		char contype;
+
+		/*
+         * different constraint type and different constraint name, but name
+         * is unique when contype is CONSTRAINT_UNIQUE or CONSTRAINT_PRIMARY
+        */
+		char *name1 = NameStr(currcon1->conname);
+		char *name2 = NameStr(currcon2->conname);
+		if (currcon1->contype != currcon2->contype)
 		{
-			return false;
+			is_same = false;
+			goto cleanup;
+		}
+		else
+		{
+			contype = currcon1->contype;
+			if ((contype != CONSTRAINT_UNIQUE && contype != CONSTRAINT_PRIMARY) &&
+				(strlen(name1) != strlen(name2) || strcmp(name1, name2) != 0))
+			{
+				is_same = false;
+				goto cleanup;
+			}
+		}
+
+		bool res = true;
+		switch (contype)
+		{
+		case CONSTRAINT_CHECK:
+		{
+			char *consrc1 = GetConsrcFromHeap(contuple1);
+			char *consrc2 = GetConsrcFromHeap(contuple2);
+			if (!consrc1 || !consrc2 || strcmp(consrc1, consrc2) != 0)
+			{
+				is_same = false;
+				goto cleanup;
+			}
+
+			break;
+		}
+		case CONSTRAINT_FOREIGN:
+		{
+			/* referencing-column */
+			initStringInfo(&buf1);
+			res &= GetConidString(contuple1, buf1, currcon1->conrelid);
+			res &= GetConidString(contuple1, buf1, currcon1->confrelid);
+
+			/* referenced-column */
+			initStringInfo(&buf2);
+			res &= GetConidString(contuple2, buf2, currcon2->conrelid);
+			res &= GetConidString(contuple2, buf2, currcon2->confrelid);
+
+			if (!res || buf1.len != buf2.len || strncmp(buf1.data, buf2.data, buf1.len) != 0)
+			{
+				is_same = false;
+				goto cleanup;
+			}
+
+			/* match type */
+			/* ON UPDATE and ON DELETE clauses */
+			if (currcon1->confmatchtype != currcon2->confmatchtype ||
+				currcon1->confupdtype != currcon2->confupdtype ||
+				currcon1->confdeltype != currcon2->confdeltype)
+			{
+				is_same = false;
+				goto cleanup;
+			}
+			break;
+		}
+		case CONSTRAINT_PRIMARY:
+		case CONSTRAINT_UNIQUE:
+		{
+			initStringInfo(&buf1);
+			res &= GetConidString(contuple1, buf1, currcon1->conrelid);
+			initStringInfo(&buf2);
+			res &= GetConidString(contuple2, buf2, currcon2->conrelid);
+
+			if (!res || buf1.len != buf2.len || strncmp(buf1.data, buf2.data, buf1.len) != 0)
+			{
+				is_same = false;
+				goto cleanup;
+			}
+			break;
+		}
+		case CONSTRAINT_TRIGGER:
+		{
+			/* should be ok */
+			break;
+		}
+		break;
+		case CONSTRAINT_EXCLUSION:
+		{
+			initStringInfo(&buf1);
+			res &= GetExeclusiveString(contuple1, buf1);
+			initStringInfo(&buf2);
+			res &= GetExeclusiveString(contuple1, buf2);
+
+			if (!res || buf1.len != buf2.len || strncmp(buf1.data, buf2.data, buf1.len) != 0)
+			{
+				is_same = false;
+				goto cleanup;
+			}
+			break;
+		}
+		default:
+			elog(ERROR, "invalid constraint type \"%c\"", contype);
+			break;
 		}
 	}
-	return true;
+
+cleanup:
+	/* Cleanup */
+	systable_endscan(scan1);
+	systable_endscan(scan2);
+	heap_close(conrel, NoLock);
+exit:
+	return is_same;
 }
 #endif
 

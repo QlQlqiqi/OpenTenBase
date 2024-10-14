@@ -215,4 +215,90 @@ SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
 drop table range_pt;
 drop table range_pt_ex;
 
+-- if there are some different constraints bewteen child table and ex table, --
+-- the exchange statement should be error --
+
+-- 1. check constraint --
+create table range_pt
+(id int, age int)
+partition by range(age)
+(
+	partition range_pt_p1 values less than (10)
+);
+create table range_pt_ex (id int, age int);
+
+-- one have check constraint, but the another does not --
+alter table range_pt_p1 add constraint ck check(id > 1);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- different value --
+alter table range_pt_ex add constraint ck check(id > 2);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- different constraint's name --
+alter table range_pt_ex drop constraint ck;
+alter table range_pt_ex add constraint ckck check(id > 1);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- different column --
+alter table range_pt_ex drop constraint ckck;
+alter table range_pt_ex add constraint ck check(age > 1);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- correct --
+alter table range_pt_ex drop constraint ck;
+alter table range_pt_ex add constraint ck check(id > 1);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+
+alter table range_pt_p1 drop constraint ck;
+alter table range_pt_ex drop constraint ck;
+
+-- 2. unique key constraint --
+-- one have unique key constraint, but the another does not --
+alter table range_pt_p1 add constraint uk unique (id);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- correct --
+alter table range_pt_ex add constraint ukuk unique (id);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+
+-- 3. foreign key constraint --
+create table t (id int not null primary key, age int);
+-- one have foreign key constraint, but the another does not --
+alter table range_pt_ex add constraint fk
+FOREIGN KEY (id)
+REFERENCES t (id);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- different action --
+alter table range_pt_p1 add constraint fk
+FOREIGN KEY (id)
+REFERENCES t (id)
+ON DELETE SET NULL ON UPDATE CASCADE;
+alter table range_pt_ex drop constraint fk;
+alter table range_pt_ex add constraint fk
+FOREIGN KEY (id)
+REFERENCES t (id)
+ON DELETE SET NULL ON UPDATE NO ACTION;
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- correct --
+alter table range_pt_ex drop constraint fk;
+alter table range_pt_ex add constraint fk
+FOREIGN KEY (id)
+REFERENCES t (id)
+ON DELETE SET NULL ON UPDATE CASCADE;
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+
+alter table range_pt_ex drop constraint fk;
+alter table range_pt_p1 drop constraint fk;
+drop table t;
+
+-- 4. primary key constraint --
+-- one have primary key constraint, but the another does not --
+alter table range_pt_p1 add constraint pk primary key(id);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+-- correct --
+alter table range_pt_ex add constraint pkpk primary key(id);
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
+
+alter table range_pt_ex drop constraint pkpk;
+alter table range_pt_p1 drop constraint pk;
+
+drop table range_pt;
+drop table range_pt_ex;
+
 DROP FUNCTION IF EXISTS test_relmap;
