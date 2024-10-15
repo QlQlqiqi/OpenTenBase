@@ -4359,7 +4359,6 @@ void ExecExchangeTable(ExchangeTableCmd *exchangecmd)
 						errmsg("relation %s does not exist", exchangecmd->child_rel->relname)));
 		return;
 	}
-
 	exId = RangeVarGetRelid(exchangecmd->ex_rel, AccessExclusiveLock, false);
 	if (!OidIsValid(exId))
 	{
@@ -4415,9 +4414,9 @@ void ExecExchangeTable(ExchangeTableCmd *exchangecmd)
 
 	if (exchangecmd->option == EXCHANGE_TABLE_INCLUDING_INDEX)
 	{
-		ReindexTable(exchangecmd->child_rel, 0);
-		ReindexTable(exchangecmd->ex_rel, 0);
-		CommandCounterIncrement();
+		// if there are no indexes, skip
+		reindex_relation(childId, REINDEX_REL_PROCESS_TOAST, 0);
+		reindex_relation(exId, REINDEX_REL_PROCESS_TOAST, 0);
 	}
 
 	// close but keep lock

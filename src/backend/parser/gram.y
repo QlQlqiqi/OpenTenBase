@@ -2793,6 +2793,7 @@ alter_table_cmd:
 		;
 
 opt_include_index: INCLUDING INDEX		{ $$ = EXCHANGE_TABLE_INCLUDING_INDEX; }
+			| EXCLUDING INDEX			{ $$ = EXCHANGE_TABLE_EXCLUDING_INDEX; }
 			| /* EMPTY */				{ $$ = EXCHANGE_TABLE_EXCLUDING_INDEX; }
 		;
 

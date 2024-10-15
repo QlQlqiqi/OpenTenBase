@@ -1,5 +1,7 @@
+-- avoid seqscan affection --
+SET SESSION enable_seqscan = false;
 -- test relmap: check if the filenode of relmap in pg_class is the same before and after --
-CREATE OR REPLACE FUNCTION test_relmap(t TEXT, t1 TEXT, t2 TEXT)
+CREATE OR REPLACE FUNCTION test_relmap(t TEXT, t1 TEXT, t2 TEXT, including_index BOOLEAN DEFAULT TRUE)
 RETURNS TEXT
 AS $$
 DECLARE
@@ -18,8 +20,12 @@ BEGIN
 			|| ' EXCHANGE PARTITION '
 			|| t1
 			|| ' WITH TABLE '
-			|| t2
-			|| ';';
+			|| t2;
+		IF including_index THEN
+			mysql := mysql || ' including index';
+		END IF;
+		mysql := mysql || ';';
+
 		EXECUTE mysql;
 
 		SELECT relfilenode INTO filenode_t1_new from pg_class where relname = t1;
@@ -460,6 +466,36 @@ SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex');
 
 alter table range_pt_ex drop constraint pkpk;
 alter table range_pt_p1 drop constraint pk;
+drop table range_pt;
+drop table range_pt_ex;
+-- if exchanging data including index, the index must be reindexed --
+create table range_pt
+(id int, age int)
+partition by range(age)
+(
+	partition range_pt_p1 values less than (10)
+);
+create table range_pt_ex (id int, age int);
+create index key_ex on range_pt_ex (age);
+create index key_p1 on range_pt_p1 (age);
+insert into range_pt_p1 values(1, 1);
+insert into range_pt_p1 values(2, 2);
+insert into range_pt_p1 values(3, 3);
+insert into range_pt_ex values(4, 4);
+-- exchange data without index --
+SELECT test_relmap('range_pt', 'range_pt_p1', 'range_pt_ex', false);
+ test_relmap 
+-------------
+ equal
+(1 row)
+
+-- it should be 3 when correct, but 1 --
+select count(*) from range_pt_ex where age >= 0;
+ count 
+-------
+     1
+(1 row)
+
 drop table range_pt;
 drop table range_pt_ex;
 DROP FUNCTION IF EXISTS test_relmap;
