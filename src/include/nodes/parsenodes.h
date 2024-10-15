@@ -3022,9 +3022,9 @@ typedef struct InlineCodeBlock
 /* whether reindex table after */
 typedef enum EXCHANGE_TABLE_OPTION
 {
-	EXCHANGE_TABLE_EXCLUDING_INDEX = 0,
+	EXCHANGE_TABLE_EXCLUDING_INDEXES = 0,
 	/* reindex child_table table and ordinary_table */
-	EXCHANGE_TABLE_INCLUDING_INDEX = 1,
+	EXCHANGE_TABLE_INCLUDING_INDEXES = 1,
 } EXCHANGE_TABLE_OPTION;
 
 /* ----------------------

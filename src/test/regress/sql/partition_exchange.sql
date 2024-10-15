@@ -2,7 +2,7 @@
 SET SESSION enable_seqscan = false;
 
 -- test relmap: check if the filenode of relmap in pg_class is the same before and after --
-CREATE OR REPLACE FUNCTION test_relmap(t TEXT, t1 TEXT, t2 TEXT, including_index BOOLEAN DEFAULT TRUE)
+CREATE OR REPLACE FUNCTION test_relmap(t TEXT, t1 TEXT, t2 TEXT, including_indexes BOOLEAN DEFAULT TRUE)
 RETURNS TEXT
 AS $$
 DECLARE
@@ -22,8 +22,8 @@ BEGIN
 			|| t1
 			|| ' WITH TABLE '
 			|| t2;
-		IF including_index THEN
-			mysql := mysql || ' including index';
+		IF including_indexes THEN
+			mysql := mysql || ' including indexes';
 		END IF;
 		mysql := mysql || ';';
 

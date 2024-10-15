@@ -4412,7 +4412,7 @@ void ExecExchangeTable(ExchangeTableCmd *exchangecmd)
 	heap_freetuple(exReltup);
 	heap_close(relrelation, RowExclusiveLock);
 
-	if (exchangecmd->option == EXCHANGE_TABLE_INCLUDING_INDEX)
+	if (exchangecmd->option == EXCHANGE_TABLE_INCLUDING_INDEXES)
 	{
 		// if there are no indexes, skip
 		reindex_relation(childId, REINDEX_REL_PROCESS_TOAST, 0);
