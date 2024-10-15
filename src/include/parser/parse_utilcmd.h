@@ -28,9 +28,8 @@ extern bool loose_unique_index;
 #ifdef __OPENTENBASE__
 extern List *transformCreateStmt(CreateStmt *stmt, const char *queryString,
 					bool autodistribute, Oid *nspaceid, bool existsok);
-List *transformChildPartBounds(CreateStmt *parent_stmt);
-void transformSubPartitionSpec2PartBound(List *child_stmts, SubPartitionSpec *subpartspec);
-CreateStmt *transformPartitionCmd2CreateStmt(PartitionCmd *partcmd, AlterTableStmt *atstmt);
+extern List *transformChildPartBounds(CreateStmt *parent_stmt);
+extern CreateStmt *transformPartitionCmd2CreateStmt(PartitionCmd *partcmd, AlterTableStmt *atstmt);
 #elif XCP
 extern List *transformCreateStmt(CreateStmt *stmt, const char *queryString,
                     bool autodistribute);

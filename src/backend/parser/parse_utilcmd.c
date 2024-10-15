@@ -206,6 +206,7 @@ static Const *transformPartitionBoundValue(ParseState *pstate, A_Const *con,
 static void transformPartitionBy(ParseState *pstate, ColumnDef *partcol, PartitionBy *partitionby);
 static char * ChooseSerialName(const char *relname, const char *colname,
 									const char *label, Oid namespaceid);
+static void transformSubPartitionSpec2PartBound(List *child_stmts, SubPartitionSpec *subpartspec);
 #endif
 /*
  * transformCreateStmt -
@@ -5685,7 +5686,7 @@ transformChildPartBounds(CreateStmt *parent_stmt)
 }
 
 /* transform child stmts's non_intervals to PartitionBoundSpec */
-void
+static void
 transformSubPartitionSpec2PartBound(List *child_stmts, SubPartitionSpec *subpartspec)
 {
 	ListCell *lc1 = NIL;
